@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { sql } from "@vercel/postgres";
 import {
   CustomerField,
@@ -81,6 +82,47 @@ export async function fetchCardData() {
 }
 
 const ITEMS_PER_PAGE = 6;
+
+export const preloadFilteredInvoices = (query: string, currentPage: number) => {
+  void fetchFilteredInvoices(query, currentPage);
+};
+
+export const fetchFilteredInvoices = cache(
+  async (query: string, currentPage: number) => {
+    const offset = (currentPage - 1) * ITEMS_PER_PAGE;
+    const normalizedQuery = query.trim().toLowerCase();
+
+    try {
+      const invoices = await sql<InvoicesTable>`
+      SELECT
+        i.id,
+        i.amount,
+        i.date,
+        i.status,
+        c.name,
+        c.email,
+        c.image_url
+      FROM invoices i
+      JOIN customers c ON i.customer_id = c.id
+      WHERE
+        LOWER(c.name) LIKE ${`%${normalizedQuery}%`} OR
+        LOWER(c.email) LIKE ${`%${normalizedQuery}%`} OR
+        CAST(i.amount AS TEXT) LIKE ${`%${normalizedQuery}%`} OR
+        TO_CHAR(i.date, 'YYYY-MM-DD') LIKE ${`%${normalizedQuery}%`} OR
+        LOWER(i.status) LIKE ${`%${normalizedQuery}%`}
+      ORDER BY i.date DESC
+      LIMIT ${ITEMS_PER_PAGE} OFFSET ${offset}
+    `;
+
+      return invoices.rows;
+    } catch (error) {
+      console.error("Database Error:", error);
+      throw new Error("Failed to fetch invoices.");
+    }
+  },
+);
+
+/* const ITEMS_PER_PAGE = 6;
 export async function fetchFilteredInvoices(
   query: string,
   currentPage: number
@@ -114,7 +156,7 @@ export async function fetchFilteredInvoices(
     console.error("Database Error:", error);
     throw new Error("Failed to fetch invoices.");
   }
-}
+} */
 
 export async function fetchInvoicesPages(query: string) {
   try {
